@@ -1,4 +1,5 @@
-use std::f32::consts::PI;
+mod galaxy;
+
 use std::iter;
 
 use winit::{
@@ -7,11 +8,11 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
+use std::f32::consts::PI;
+
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
 
-use rand::{thread_rng, Rng};
-use rand_distr::{Distribution, Exp, Normal, Uniform};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -35,40 +36,6 @@ impl Vertex {
     }
 }
 
-struct Star {
-    // Rotation of the star trajectory (angle in radius)
-    curve_offset: f32,
-    // Start position of the star (angle in radius)
-    start_position: f32,
-    x_radius: f32,
-    y_radius: f32,
-    elevation: f32,
-}
-
-fn generate_stars() -> Vec<Star> {
-    let mut stars = vec![];
-
-    let mut start_position_distribution = Uniform::new(0.0, 2.0 * PI);
-    let mut x_radius_distribution = Exp::new(3.0).unwrap();
-
-    for i in 0..10000 {
-        let x_radius = x_radius_distribution.sample(&mut thread_rng());
-        let start_position = start_position_distribution.sample(&mut thread_rng());
-        let curve_offset = x_radius * (2.0 * PI);
-        let y_radius = x_radius + 0.1;
-        let elevation = 0.0;
-
-        stars.push(Star {
-            curve_offset,
-            start_position,
-            x_radius,
-            y_radius,
-            elevation,
-        })
-    }
-
-    stars
-}
 
 ///
 /// # Fields
@@ -229,7 +196,7 @@ impl State {
             },
         });
 
-        let stars = generate_stars();
+        let stars = galaxy::generate_stars();
 
         let vertices = stars
             .iter()
@@ -249,7 +216,7 @@ impl State {
                 let y = a * cos_phi * sin_theta + b * sin_phi * cos_theta;
 
                 Vertex {
-                    position: [x, y, 0.0],
+                    position: [x, y, star.elevation],
                     color: [1.0, 1.0, 1.0],
                 }
             })
@@ -404,11 +371,11 @@ fn process_window_event(state: &mut State, control_flow: &mut ControlFlow, event
             WindowEvent::CloseRequested
             | WindowEvent::KeyboardInput {
                 input:
-                    KeyboardInput {
-                        state: ElementState::Pressed,
-                        virtual_keycode: Some(VirtualKeyCode::Escape),
-                        ..
-                    },
+                KeyboardInput {
+                    state: ElementState::Pressed,
+                    virtual_keycode: Some(VirtualKeyCode::Escape),
+                    ..
+                },
                 ..
             } => *control_flow = ControlFlow::Exit,
             WindowEvent::Resized(physical_size) => {
