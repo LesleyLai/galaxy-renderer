@@ -1,5 +1,5 @@
 [package]
-name = "galaxy-renderer"
+name = "procedural-galaxy"
 version = "0.1.0"
 authors = ["Lesley Lai <lesley@lesleylai.info>"]
 edition = "2018"

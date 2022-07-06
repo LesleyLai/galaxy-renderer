@@ -1,7 +1,7 @@
 use std::f32::consts::PI;
 
 use rand::{thread_rng};
-use rand_distr::{Distribution, Exp, Uniform};
+use rand_distr::{Distribution, Exp, Normal, Uniform};
 
 pub struct Star {
     // Rotation of the star trajectory (angle in radius)
@@ -29,7 +29,10 @@ impl Galaxy {
             let start_position = start_position_distribution.sample(&mut thread_rng());
             let curve_offset = x_radius * (2.0 * PI);
             let y_radius = x_radius + 0.1;
-            let elevation = 0.0;
+
+            let elevation_distribution = Normal::new(0.0, 0.02 * 0.2f32.powf(x_radius)).unwrap();
+
+            let elevation = elevation_distribution.sample(&mut thread_rng()) as f32;
 
             stars.push(Star {
                 curve_offset,

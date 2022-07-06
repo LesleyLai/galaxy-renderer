@@ -8,7 +8,7 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use std::f32::consts::{FRAC_PI_4};
+use std::f32::consts::{PI, FRAC_PI_4};
 
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
@@ -38,65 +38,64 @@ impl Vertex {
 }
 
 
-// /// # Fields
-// ///
-// /// * `a` - Half width of the ellipse
-// /// * `b` - Half height of the ellipse
-// /// * `angle` - The angle of the ellipse rotation around the z-axis (in radians)
-// struct EllipseCreateInfo {
-//     a: f32,
-//     b: f32,
-//     angle: f32,
-//     vertices_count: u16,
-// }
-//
-// fn append_ellipse_vertices(
-//     vertices: &mut Vec<Vertex>,
-//     indices: &mut Vec<u16>,
-//     create_info: EllipseCreateInfo,
-// ) {
-//     let EllipseCreateInfo {
-//         a,
-//         b,
-//         angle: theta,
-//         vertices_count,
-//     } = create_info;
-//
-//     assert!(vertices_count >= 2); // Can't draw an ellipse without at least two vertices
-//
-//     let sin_theta = theta.sin();
-//     let cos_theta = theta.cos();
-//
-//     let color = [1.0, 1.0, 1.0];
-//
-//     let index_offset = vertices.len() as u16;
-//
-//     // Vertices on the ellipse
-//     vertices.extend((0..vertices_count).map(|i| {
-//         // The rotation angle of vertex in the ellipse's coordinate
-//         let phi = (2.0 * PI) * (i as f32 / vertices_count as f32);
-//         let [sin_phi, cos_phi] = [phi.sin(), phi.cos()];
-//
-//         let vx = a * cos_phi * cos_theta - b * sin_phi * sin_theta;
-//         let vy = a * cos_phi * sin_theta + b * sin_phi * cos_theta;
-//
-//         Vertex {
-//             position: [vx, vy, 0.0],
-//             color,
-//         }
-//     }));
-//
-//     // close the loop
-//     vertices.push(Vertex {
-//         position: [a * cos_theta, a * sin_theta, 0.0],
-//         color,
-//     });
-//
-//     // Indices in the form of 0 1 | 1 2 | 2 3 | 3 4 | 4 5 | 5 0
-//     indices.extend(((index_offset + 1)..(index_offset + vertices_count)).flat_map(|n| n..(n + 2)));
-//     indices.push(index_offset + vertices_count - 1);
-//     indices.push(index_offset);
-// }
+/// # Fields
+///
+/// * `a` - Half width of the ellipse
+/// * `b` - Half height of the ellipse
+/// * `angle` - The angle of the ellipse rotation around the z-axis (in radians)
+struct EllipseCreateInfo {
+    a: f32,
+    b: f32,
+    angle: f32,
+    vertices_count: u16,
+}
+
+fn append_ellipse_vertices(
+    vertices: &mut Vec<Vertex>,
+    indices: &mut Vec<u16>,
+    color: [f32; 3],
+    create_info: EllipseCreateInfo,
+) {
+    let EllipseCreateInfo {
+        a,
+        b,
+        angle: theta,
+        vertices_count,
+    } = create_info;
+
+    assert!(vertices_count >= 2); // Can't draw an ellipse without at least two vertices
+
+    let sin_theta = theta.sin();
+    let cos_theta = theta.cos();
+
+    let index_offset = vertices.len() as u16;
+
+    // Vertices on the ellipse
+    vertices.extend((0..vertices_count).map(|i| {
+        // The rotation angle of vertex in the ellipse's coordinate
+        let phi = (2.0 * PI) * (i as f32 / vertices_count as f32);
+        let [sin_phi, cos_phi] = [phi.sin(), phi.cos()];
+
+        let vx = a * cos_phi * cos_theta - b * sin_phi * sin_theta;
+        let vy = a * cos_phi * sin_theta + b * sin_phi * cos_theta;
+
+        Vertex {
+            position: [vx, vy, 0.0],
+            color,
+        }
+    }));
+
+    // close the loop
+    vertices.push(Vertex {
+        position: [a * cos_theta, a * sin_theta, 0.0],
+        color,
+    });
+
+    // Indices in the form of 0 1 | 1 2 | 2 3 | 3 4 | 4 5 | 5 0
+    indices.extend(((index_offset)..(index_offset + vertices_count - 1)).flat_map(|n| n..(n + 2)));
+    indices.push(index_offset + vertices_count - 1);
+    indices.push(index_offset);
+}
 
 struct Camera {
     eye: cgmath::Point3<f32>,
@@ -216,6 +215,8 @@ impl CameraController {
         }
 
         let right = forward_norm.cross(camera.up);
+        let up = forward_norm.cross(right);
+
 
         // Redo radius calc in case the fowrard/backward is pressed.
         let forward = camera.target - camera.eye;
@@ -225,10 +226,10 @@ impl CameraController {
             // Rescale the distance between the target and eye so
             // that it doesn't change. The eye therefore still
             // lies on the circle made by the target and eye.
-            camera.eye = camera.target - (forward + right * self.speed).normalize() * forward_mag;
+            camera.eye = camera.target - (forward + up * self.speed).normalize() * forward_mag;
         }
         if self.is_left_pressed {
-            camera.eye = camera.target - (forward - right * self.speed).normalize() * forward_mag;
+            camera.eye = camera.target - (forward - up * self.speed).normalize() * forward_mag;
         }
     }
 }
@@ -239,17 +240,24 @@ struct State {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
-    render_pipeline: wgpu::RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
-    vertex_count: u32,
-    //index_buffer: wgpu::Buffer,
-    //index_count: u32,
+    star_render_pipeline: wgpu::RenderPipeline,
+    star_vertex_buffer: wgpu::Buffer,
+    star_vertex_count: u32,
+
+    curve_render_pipeline: wgpu::RenderPipeline,
+    curve_vertex_buffer: wgpu::Buffer,
+    curve_index_buffer: wgpu::Buffer,
+    curve_index_count: u32,
+
     camera: Camera,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
     camera_controller: CameraController,
+
+    show_guidelines: bool,
 }
+
 
 impl State {
     async fn new(window: &Window) -> Self {
@@ -318,8 +326,8 @@ impl State {
                 push_constant_ranges: &[],
             });
 
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Render Pipeline"),
+        let star_render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Star Render Pipeline"),
             layout: Some(&render_pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
@@ -353,8 +361,43 @@ impl State {
             multiview: None,
         });
 
+        let curve_render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Curve Render Pipeline"),
+            layout: Some(&render_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: "vs_main",
+                buffers: &[Vertex::desc()],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: "fs_main",
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: config.format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::LineList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: Some(wgpu::Face::Back),
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
+        });
+
         let galaxy = Galaxy {
-            star_count: 10000,
+            star_count: 50000,
         };
         let stars = galaxy.generate_stars();
 
@@ -382,33 +425,80 @@ impl State {
             })
             .collect::<Vec<Vertex>>();
 
-        // let mut indices = vec![];
-        //
-        // for i in 0..25 {
-        //     let fi = i as f32;
-        //     append_ellipse_vertices(
-        //         &mut vertices,
-        //         &mut indices,
-        //         EllipseCreateInfo {
-        //             a: 0.2 + 0.03 * fi,
-        //             b: 0.1 + 0.03 * fi,
-        //             angle: (PI / 15.) * fi,
-        //             vertices_count: 100,
-        //         },
-        //     );
-        // }
+        let mut curve_vertices = vec![];
+        let mut curve_indices = vec![];
+        let mut append_ellipse_vertices =
+            |color, create_info|
+                append_ellipse_vertices(&mut curve_vertices, &mut curve_indices, color, create_info);
 
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        // Guideline for density waves
+        for i in 0..100 {
+            let fi = i as f32;
+            let x_radius = 0.1 + 0.02 * fi;
+            let y_radius = x_radius + 0.1;
+            let curve_offset = x_radius * (2.0 * PI);
+            append_ellipse_vertices(
+                [0.05, 0.05, 0.05],
+                EllipseCreateInfo {
+                    a: x_radius,
+                    b: y_radius,
+                    angle: curve_offset,
+                    vertices_count: 100,
+                },
+            );
+        }
+
+        // Guideline for Bulga
+        append_ellipse_vertices(
+            [0.0, 1.0, 0.0],
+            EllipseCreateInfo {
+                a: 0.2,
+                b: 0.2,
+                angle: 0.0,
+                vertices_count: 64,
+            },
+        );
+
+        // Guideline for Galaxy Radius
+        append_ellipse_vertices(
+            [0.0, 0.0, 1.0],
+            EllipseCreateInfo {
+                a: 1.0,
+                b: 1.0,
+                angle: 0.0,
+                vertices_count: 128,
+            },
+        );
+
+        // Guideline for Far-field Radius
+        append_ellipse_vertices(
+            [1.0, 0.0, 0.0],
+            EllipseCreateInfo {
+                a: 2.0,
+                b: 2.0,
+                angle: 0.0,
+                vertices_count: 256,
+            },
+        );
+
+
+        let star_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Star Vertex Buffer"),
             contents: bytemuck::cast_slice(star_vertices.as_slice()),
             usage: wgpu::BufferUsages::VERTEX,
         });
 
-        // let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //     label: Some("Indices Buffer"),
-        //     contents: bytemuck::cast_slice(indices.as_slice()),
-        //     usage: wgpu::BufferUsages::INDEX,
-        // });
+        let curve_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Curve Vertex Buffer"),
+            contents: bytemuck::cast_slice(curve_vertices.as_slice()),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
+        let curve_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Curve Indices Buffer"),
+            contents: bytemuck::cast_slice(curve_indices.as_slice()),
+            usage: wgpu::BufferUsages::INDEX,
+        });
 
         let camera = Camera {
             eye: (0.0, 0.0, 50.0).into(),
@@ -445,7 +535,7 @@ impl State {
             label: Some("camera_bind_group"),
         });
 
-        let camera_controller = CameraController::new(0.2);
+        let camera_controller = CameraController::new(0.5);
 
         Self {
             surface,
@@ -453,14 +543,21 @@ impl State {
             queue,
             config,
             size,
-            render_pipeline,
-            vertex_buffer,
-            vertex_count: star_vertices.len() as u32,
+            star_render_pipeline,
+            star_vertex_buffer,
+            star_vertex_count: star_vertices.len() as u32,
+            curve_render_pipeline: curve_render_pipeline,
+            curve_vertex_buffer,
+            curve_index_buffer,
+            curve_index_count: curve_indices.len() as u32,
+
             camera,
             camera_uniform,
             camera_buffer,
             camera_bind_group,
             camera_controller,
+
+            show_guidelines: true,
         }
     }
 
@@ -470,10 +567,33 @@ impl State {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
+
+            self.camera.aspect = new_size.width as f32 / new_size.height as f32;
         }
     }
 
     fn input(&mut self, event: &WindowEvent) -> bool {
+        match event {
+            WindowEvent::KeyboardInput {
+                input: KeyboardInput {
+                    state,
+                    virtual_keycode: Some(keycode),
+                    ..
+                },
+                ..
+            } => {
+                if (*state == ElementState::Released) {
+                    match keycode {
+                        VirtualKeyCode::G => {
+                            self.show_guidelines = !self.show_guidelines;
+                        }
+                        _ => ()
+                    }
+                }
+            }
+            _ => ()
+        }
+
         self.camera_controller.process_events(event)
     }
 
@@ -514,11 +634,17 @@ impl State {
                 depth_stencil_attachment: None,
             });
 
-            render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            //render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw(0..self.vertex_count, 0..1);
+            render_pass.set_pipeline(&self.star_render_pipeline);
+            render_pass.set_vertex_buffer(0, self.star_vertex_buffer.slice(..));
+            render_pass.draw(0..self.star_vertex_count, 0..1);
+
+            if (self.show_guidelines) {
+                render_pass.set_pipeline(&self.curve_render_pipeline);
+                render_pass.set_vertex_buffer(0, self.curve_vertex_buffer.slice(..));
+                render_pass.set_index_buffer(self.curve_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                render_pass.draw_indexed(0..self.curve_index_count, 0, 0..1);
+            }
         }
 
         self.queue.submit(iter::once(encoder.finish()));

@@ -432,20 +432,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "galaxy-renderer"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "cgmath",
- "env_logger",
- "pollster",
- "rand",
- "rand_distr",
- "wgpu",
- "winit",
-]
-
-[[package]]
 name = "getrandom"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -940,6 +926,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f84e92c0f7c9d58328b85a78557813e4bd845130db68d7184635344399423b1"
 dependencies = [
  "unicode-xid",
+]
+
+[[package]]
+name = "procedural-galaxy"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "cgmath",
+ "env_logger",
+ "pollster",
+ "rand",
+ "rand_distr",
+ "wgpu",
+ "winit",
 ]
 
 [[package]]

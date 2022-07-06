@@ -1,6 +1,6 @@
 # Galaxy renderer
 
-A procedural generator and renderer of galaxies.
+WIP procedural generator and renderer of galaxies
 
 ## License
 
