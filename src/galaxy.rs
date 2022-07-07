@@ -15,20 +15,62 @@ pub struct Star {
 
 pub struct Galaxy {
     pub star_count: u32,
+    pub r_bulge: f32,
 }
 
+
 impl Galaxy {
-    pub fn generate_stars(self) -> Vec<Star> {
+    // fn bulge_star_pdf(&self, r: f32) -> f32 {
+    //     let kappa = 3.0;
+    //     (-kappa * r * 0.25).exp()
+    // }
+
+    // fn disk_star_pdf(&self, r: f32) -> f32 {
+    //     let r_d = 1.0;
+    //     (-r / r_d).exp()
+    // }
+
+    fn bulge_star_cdf(&self, r: f32) -> f32 {
+        let kappa = 3.0;
+        1.0 - (-kappa * r * 0.25).exp()
+    }
+
+    fn disk_star_cdf(&self, r: f32) -> f32 {
+        let r_d = 1.0;
+        1.0 - (-r / r_d).exp()
+    }
+
+
+    pub fn generate_stars(&self) -> Vec<Star> {
         let mut stars = vec![];
 
+        let star_in_bulge_prob = self.bulge_star_cdf(self.r_bulge);
+        let star_in_disk_prob = 1.0 - self.disk_star_cdf(self.r_bulge);
+        let normalize_factor = star_in_bulge_prob + star_in_disk_prob;
+        let star_in_bulge_prob = star_in_bulge_prob / normalize_factor;
+        let star_in_disk_prob = star_in_disk_prob / normalize_factor;
+
+        let star_section_dist = Uniform::new(0.0, 1.0);
+
         let start_position_distribution = Uniform::new(0.0, 2.0 * PI);
-        let x_radius_distribution = Exp::new(3.0).unwrap();
+
+        let kappa = 5.0;
+        let bulge_x_radius_distribution = Exp::new(0.25 * kappa).unwrap();
+        let disk_x_radius_distribution = Exp::new(1.0 / 0.5).unwrap();
 
         for _ in 0..self.star_count {
-            let x_radius = x_radius_distribution.sample(&mut thread_rng());
+            let mut x_radius = bulge_x_radius_distribution.sample(&mut thread_rng());
+            if (x_radius > self.r_bulge) {
+                x_radius = self.r_bulge + disk_x_radius_distribution.sample(&mut thread_rng());
+            }
+
             let start_position = start_position_distribution.sample(&mut thread_rng());
             let curve_offset = x_radius * (2.0 * PI);
-            let y_radius = x_radius + 0.1;
+
+            let mut y_radius = x_radius;
+            if (x_radius > self.r_bulge) {
+                y_radius += 0.1f32.min(x_radius - self.r_bulge);
+            }
 
             let elevation_distribution = Normal::new(0.0, 0.02 * 0.2f32.powf(x_radius)).unwrap();
 

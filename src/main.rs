@@ -398,14 +398,15 @@ impl State {
 
         let galaxy = Galaxy {
             star_count: 50000,
+            r_bulge: 0.2,
         };
         let stars = galaxy.generate_stars();
 
         let star_vertices = stars
             .iter()
             .map(|star| {
-                let cos_theta = star.curve_offset.cos();
                 let sin_theta = star.curve_offset.sin();
+                let cos_theta = star.curve_offset.cos();
 
                 // The rotation angle of vertex in the ellipse's coordinate
                 let phi = star.start_position;
@@ -434,11 +435,11 @@ impl State {
         // Guideline for density waves
         for i in 0..100 {
             let fi = i as f32;
-            let x_radius = 0.1 + 0.02 * fi;
+            let x_radius = galaxy.r_bulge + 0.02 * fi;
             let y_radius = x_radius + 0.1;
             let curve_offset = x_radius * (2.0 * PI);
             append_ellipse_vertices(
-                [0.05, 0.05, 0.05],
+                [0.2, 0.2, 0.2],
                 EllipseCreateInfo {
                     a: x_radius,
                     b: y_radius,
@@ -452,8 +453,8 @@ impl State {
         append_ellipse_vertices(
             [0.0, 1.0, 0.0],
             EllipseCreateInfo {
-                a: 0.2,
-                b: 0.2,
+                a: galaxy.r_bulge,
+                b: galaxy.r_bulge,
                 angle: 0.0,
                 vertices_count: 64,
             },
@@ -582,7 +583,7 @@ impl State {
                 },
                 ..
             } => {
-                if (*state == ElementState::Released) {
+                if *state == ElementState::Released {
                     match keycode {
                         VirtualKeyCode::G => {
                             self.show_guidelines = !self.show_guidelines;
@@ -639,7 +640,7 @@ impl State {
             render_pass.set_vertex_buffer(0, self.star_vertex_buffer.slice(..));
             render_pass.draw(0..self.star_vertex_count, 0..1);
 
-            if (self.show_guidelines) {
+            if self.show_guidelines {
                 render_pass.set_pipeline(&self.curve_render_pipeline);
                 render_pass.set_vertex_buffer(0, self.curve_vertex_buffer.slice(..));
                 render_pass.set_index_buffer(self.curve_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
