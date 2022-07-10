@@ -11,6 +11,7 @@ pub struct Star {
     pub x_radius: f32,
     pub y_radius: f32,
     pub elevation: f32,
+    pub temperature: f32,
 }
 
 pub struct Galaxy {
@@ -30,27 +31,19 @@ impl Galaxy {
     //     (-r / r_d).exp()
     // }
 
-    fn bulge_star_cdf(&self, r: f32) -> f32 {
-        let kappa = 3.0;
-        1.0 - (-kappa * r * 0.25).exp()
-    }
-
-    fn disk_star_cdf(&self, r: f32) -> f32 {
-        let r_d = 1.0;
-        1.0 - (-r / r_d).exp()
-    }
+    // fn bulge_star_cdf(&self, r: f32) -> f32 {
+    //     let kappa = 3.0;
+    //     1.0 - (-kappa * r * 0.25).exp()
+    // }
+    //
+    // fn disk_star_cdf(&self, r: f32) -> f32 {
+    //     let r_d = 1.0;
+    //     1.0 - (-r / r_d).exp()
+    // }
 
 
     pub fn generate_stars(&self) -> Vec<Star> {
         let mut stars = vec![];
-
-        let star_in_bulge_prob = self.bulge_star_cdf(self.r_bulge);
-        let star_in_disk_prob = 1.0 - self.disk_star_cdf(self.r_bulge);
-        let normalize_factor = star_in_bulge_prob + star_in_disk_prob;
-        let star_in_bulge_prob = star_in_bulge_prob / normalize_factor;
-        let star_in_disk_prob = star_in_disk_prob / normalize_factor;
-
-        let star_section_dist = Uniform::new(0.0, 1.0);
 
         let start_position_distribution = Uniform::new(0.0, 2.0 * PI);
 
@@ -58,9 +51,11 @@ impl Galaxy {
         let bulge_x_radius_distribution = Exp::new(0.25 * kappa).unwrap();
         let disk_x_radius_distribution = Exp::new(1.0 / 0.5).unwrap();
 
+        let temperature_distribution = Normal::new(6000.0, 2000.0).unwrap();
+
         for _ in 0..self.star_count {
             let mut x_radius = bulge_x_radius_distribution.sample(&mut thread_rng());
-            if (x_radius > self.r_bulge) {
+            if x_radius > self.r_bulge {
                 x_radius = self.r_bulge + disk_x_radius_distribution.sample(&mut thread_rng());
             }
 
@@ -68,7 +63,7 @@ impl Galaxy {
             let curve_offset = x_radius * (2.0 * PI);
 
             let mut y_radius = x_radius;
-            if (x_radius > self.r_bulge) {
+            if x_radius > self.r_bulge {
                 y_radius += 0.1f32.min(x_radius - self.r_bulge);
             }
 
@@ -76,12 +71,15 @@ impl Galaxy {
 
             let elevation = elevation_distribution.sample(&mut thread_rng()) as f32;
 
+            let temperature = temperature_distribution.sample(&mut thread_rng());
+
             stars.push(Star {
                 curve_offset,
                 start_position,
                 x_radius,
                 y_radius,
                 elevation,
+                temperature,
             })
         }
 
