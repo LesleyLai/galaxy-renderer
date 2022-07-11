@@ -482,6 +482,9 @@ struct State {
     camera_bind_group: wgpu::BindGroup,
     camera_controller: CameraController,
 
+    time_buffer: wgpu::Buffer,
+    start_time: std::time::Instant,
+
     show_guidelines: bool,
 }
 
@@ -567,6 +570,16 @@ impl State {
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: false,
                             min_binding_size: None,
                         },
@@ -795,6 +808,13 @@ impl State {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
+        let time = 0.0;
+        let time_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Time Buffer"),
+            contents: bytemuck::bytes_of(&time),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
         let compute_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &compute_bind_group_layout,
             entries: &[
@@ -805,6 +825,10 @@ impl State {
                 wgpu::BindGroupEntry {
                     binding: 1,
                     resource: star_vertex_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: time_buffer.as_entire_binding(),
                 },
             ],
             label: Some("compute_bind_group"),
@@ -844,6 +868,9 @@ impl State {
             camera_buffer,
             camera_bind_group,
             camera_controller,
+
+            time_buffer,
+            start_time: std::time::Instant::now(),
 
             show_guidelines: false,
         }
@@ -894,6 +921,11 @@ impl State {
             0,
             bytemuck::cast_slice(&[self.camera_uniform]),
         );
+
+        let time_since_start = std::time::Instant::now() - self.start_time;
+        let time = time_since_start.as_secs_f32();
+        self.queue
+            .write_buffer(&self.time_buffer, 0, bytemuck::bytes_of(&time));
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
