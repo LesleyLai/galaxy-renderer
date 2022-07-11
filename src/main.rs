@@ -20,6 +20,7 @@ use winit::dpi::PhysicalSize;
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct StarGPU {
     orbit: [f32; 4],
+    color: [f32; 4],
 }
 
 #[repr(C)]
@@ -683,6 +684,10 @@ impl State {
                     star.elevation,
                     star.curve_offset,
                 ],
+                color: {
+                    let c = color_from_temperature(star.temperature);
+                    [c[0], c[1], c[2], 0.0]
+                },
             })
             .collect::<Vec<StarGPU>>();
 
