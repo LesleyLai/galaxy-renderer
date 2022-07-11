@@ -8,23 +8,30 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use std::f32::consts::{PI, FRAC_PI_4};
+use std::f32::consts::{FRAC_PI_4, PI};
+use std::mem::size_of;
+use wgpu::BufferAddress;
 
+use crate::galaxy::Galaxy;
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
-use crate::galaxy::Galaxy;
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct StarGPU {
+    orbit: [f32; 4],
+}
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Vertex {
-    position: [f32; 3],
-    color: [f32; 3],
+    position: [f32; 4],
+    color: [f32; 4],
 }
 
 impl Vertex {
     const ATTRIBS: [wgpu::VertexAttribute; 2] =
-        wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3];
+        wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4];
 
     fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
         use std::mem;
@@ -36,7 +43,6 @@ impl Vertex {
         }
     }
 }
-
 
 /// # Fields
 ///
@@ -80,15 +86,15 @@ fn append_ellipse_vertices(
         let vy = a * cos_phi * sin_theta + b * sin_phi * cos_theta;
 
         Vertex {
-            position: [vx, vy, 0.0],
-            color,
+            position: [vx, vy, 0.0, 0.0],
+            color: [color[0], color[1], color[2], 0.0],
         }
     }));
 
     // close the loop
     vertices.push(Vertex {
-        position: [a * cos_theta, a * sin_theta, 0.0],
-        color,
+        position: [a * cos_theta, a * sin_theta, 0.0, 0.0],
+        color: [color[0], color[1], color[2], 0.0],
     });
 
     // Indices in the form of 0 1 | 1 2 | 2 3 | 3 4 | 4 5 | 5 0
@@ -167,11 +173,12 @@ impl CameraController {
     fn process_events(&mut self, event: &WindowEvent) -> bool {
         match event {
             WindowEvent::KeyboardInput {
-                input: KeyboardInput {
-                    state,
-                    virtual_keycode: Some(keycode),
-                    ..
-                },
+                input:
+                    KeyboardInput {
+                        state,
+                        virtual_keycode: Some(keycode),
+                        ..
+                    },
                 ..
             } => {
                 let is_pressed = *state == ElementState::Pressed;
@@ -217,7 +224,6 @@ impl CameraController {
         let right = forward_norm.cross(camera.up);
         let up = forward_norm.cross(right);
 
-
         // Redo radius calc in case the fowrard/backward is pressed.
         let forward = camera.target - camera.eye;
         let forward_mag = forward.magnitude();
@@ -234,9 +240,8 @@ impl CameraController {
     }
 }
 
-fn color_from_temperature(temperature: f32) -> [f32; 3]
-{
-    let color_table: [[f32; 3]; 200] = [
+fn color_from_temperature(temperature: f32) -> [f32; 3] {
+    const COLOR_TABLE: [[f32; 3]; 200] = [
         [1.0, -0.00987248, -0.0166818],
         [1.0, 0.000671682, -0.0173831],
         [1.0, 0.0113477, -0.0179839],
@@ -436,16 +441,18 @@ fn color_from_temperature(temperature: f32) -> [f32; 3]
         [0.612469, 0.70006, 1.0],
         [0.609848, 0.698231, 1.0],
         [0.607266, 0.696426, 1.0],
-        [0.60472, 0.694643, 1.0]
+        [0.60472, 0.694643, 1.0],
     ];
 
     let min_temperature = 1000;
     let max_temperature = 10000;
-    let col_count = color_table.len() as i32;
+    let col_count = COLOR_TABLE.len() as i32;
 
-    let idx: i32 = ((temperature - min_temperature as f32) / (max_temperature - min_temperature) as f32 * col_count as f32) as i32;
+    let idx: i32 = ((temperature - min_temperature as f32)
+        / (max_temperature - min_temperature) as f32
+        * col_count as f32) as i32;
     let idx = idx.clamp(0, col_count - 1) as usize;
-    color_table[idx]
+    COLOR_TABLE[idx]
 }
 
 struct State {
@@ -454,7 +461,12 @@ struct State {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
+
+    compute_bind_group: wgpu::BindGroup,
+    star_compute_pipeline: wgpu::ComputePipeline,
+
     star_render_pipeline: wgpu::RenderPipeline,
+    star_buffer: wgpu::Buffer,
     star_vertex_buffer: wgpu::Buffer,
     star_vertex_count: u32,
 
@@ -471,7 +483,6 @@ struct State {
 
     show_guidelines: bool,
 }
-
 
 impl State {
     async fn new(window: &Window) -> Self {
@@ -512,14 +523,19 @@ impl State {
         };
         surface.configure(&device, &config);
 
+        let compute_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Compute Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shader.comp.wgsl").into()),
+        });
+
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
 
-        let camera_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::VERTEX,
                     ty: wgpu::BindingType::Buffer {
@@ -528,10 +544,51 @@ impl State {
                         min_binding_size: None,
                     },
                     count: None,
-                }
-            ],
-            label: Some("camera_bind_group_layout"),
-        });
+                }],
+                label: Some("camera_bind_group_layout"),
+            });
+
+        let compute_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: false },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+                label: Some("compute_bind_group_layout"),
+            });
+
+        let compute_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Render Pipeline Layout"),
+                bind_group_layouts: &[&compute_bind_group_layout],
+                push_constant_ranges: &[],
+            });
+
+        let star_compute_pipeline =
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("Star Compute Pipeline"),
+                layout: Some(&compute_pipeline_layout),
+                module: &compute_shader,
+                entry_point: "main",
+            });
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -575,40 +632,41 @@ impl State {
             multiview: None,
         });
 
-        let curve_render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Curve Render Pipeline"),
-            layout: Some(&render_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: "vs_main",
-                buffers: &[Vertex::desc()],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: "fs_main",
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::LineList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview: None,
-        });
+        let curve_render_pipeline =
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("Curve Render Pipeline"),
+                layout: Some(&render_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: "vs_main",
+                    buffers: &[Vertex::desc()],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: "fs_main",
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: config.format,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::LineList,
+                    strip_index_format: None,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: Some(wgpu::Face::Back),
+                    polygon_mode: wgpu::PolygonMode::Fill,
+                    unclipped_depth: false,
+                    conservative: false,
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState {
+                    count: 1,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
+                },
+                multiview: None,
+            });
 
         let galaxy = Galaxy {
             star_count: 50000,
@@ -616,37 +674,23 @@ impl State {
         };
         let stars = galaxy.generate_stars();
 
-        let star_vertices = stars
+        let star_buffer_input = stars
             .iter()
-            .map(|star| {
-                let sin_theta = star.curve_offset.sin();
-                let cos_theta = star.curve_offset.cos();
-
-                // The rotation angle of vertex in the ellipse's coordinate
-                let phi = star.start_position;
-                let sin_phi = phi.sin();
-                let cos_phi = phi.cos();
-
-                let a = star.x_radius;
-                let b = star.y_radius;
-
-                let x = a * cos_phi * cos_theta - b * sin_phi * sin_theta;
-                let y = a * cos_phi * sin_theta + b * sin_phi * cos_theta;
-
-                let color = color_from_temperature(star.temperature);
-
-                Vertex {
-                    position: [x, y, star.elevation],
-                    color: color,
-                }
+            .map(|star| StarGPU {
+                orbit: [
+                    star.x_radius,
+                    star.y_radius,
+                    star.elevation,
+                    star.curve_offset,
+                ],
             })
-            .collect::<Vec<Vertex>>();
+            .collect::<Vec<StarGPU>>();
 
         let mut curve_vertices = vec![];
         let mut curve_indices = vec![];
-        let mut append_ellipse_vertices =
-            |color, create_info|
-                append_ellipse_vertices(&mut curve_vertices, &mut curve_indices, color, create_info);
+        let mut append_ellipse_vertices = |color, create_info| {
+            append_ellipse_vertices(&mut curve_vertices, &mut curve_indices, color, create_info)
+        };
 
         // Guideline for density waves
         for i in 0..100 {
@@ -698,11 +742,19 @@ impl State {
             },
         );
 
+        let star_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Star Buffer"),
+            contents: bytemuck::cast_slice(star_buffer_input.as_slice()),
+            usage: wgpu::BufferUsages::STORAGE,
+        });
 
-        let star_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        println!("{}", star_buffer_input.len());
+
+        let star_vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Star Vertex Buffer"),
-            contents: bytemuck::cast_slice(star_vertices.as_slice()),
-            usage: wgpu::BufferUsages::VERTEX,
+            size: (star_buffer_input.len() * size_of::<Vertex>()) as BufferAddress,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::VERTEX,
+            mapped_at_creation: false,
         });
 
         let curve_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -732,23 +784,33 @@ impl State {
         let mut camera_uniform = CameraUniform::new();
         camera_uniform.update_view_proj(&camera);
 
-        let camera_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Camera Buffer"),
-                contents: bytemuck::cast_slice(&[camera_uniform]),
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            }
-        );
+        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Camera Buffer"),
+            contents: bytemuck::cast_slice(&[camera_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
 
-
-        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &camera_bind_group_layout,
+        let compute_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &compute_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: camera_buffer.as_entire_binding(),
-                }
+                    resource: star_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: star_vertex_buffer.as_entire_binding(),
+                },
             ],
+            label: Some("compute_bind_group"),
+        });
+
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &camera_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            }],
             label: Some("camera_bind_group"),
         });
 
@@ -760,9 +822,13 @@ impl State {
             queue,
             config,
             size,
+            star_compute_pipeline,
+            compute_bind_group,
+
             star_render_pipeline,
+            star_buffer,
             star_vertex_buffer,
-            star_vertex_count: star_vertices.len() as u32,
+            star_vertex_count: stars.len() as u32,
             curve_render_pipeline: curve_render_pipeline,
             curve_vertex_buffer,
             curve_index_buffer,
@@ -774,7 +840,7 @@ impl State {
             camera_bind_group,
             camera_controller,
 
-            show_guidelines: true,
+            show_guidelines: false,
         }
     }
 
@@ -792,11 +858,12 @@ impl State {
     fn input(&mut self, event: &WindowEvent) -> bool {
         match event {
             WindowEvent::KeyboardInput {
-                input: KeyboardInput {
-                    state,
-                    virtual_keycode: Some(keycode),
-                    ..
-                },
+                input:
+                    KeyboardInput {
+                        state,
+                        virtual_keycode: Some(keycode),
+                        ..
+                    },
                 ..
             } => {
                 if *state == ElementState::Released {
@@ -804,11 +871,11 @@ impl State {
                         VirtualKeyCode::G => {
                             self.show_guidelines = !self.show_guidelines;
                         }
-                        _ => ()
+                        _ => (),
                     }
                 }
             }
-            _ => ()
+            _ => (),
         }
 
         self.camera_controller.process_events(event)
@@ -817,7 +884,11 @@ impl State {
     fn update(&mut self) {
         self.camera_controller.update_camera(&mut self.camera);
         self.camera_uniform.update_view_proj(&self.camera);
-        self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
+        self.queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::cast_slice(&[self.camera_uniform]),
+        );
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -831,6 +902,15 @@ impl State {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
             });
+
+        {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("Compute Pass"),
+            });
+            pass.set_pipeline(&self.star_compute_pipeline);
+            pass.set_bind_group(0, &self.compute_bind_group, &[]);
+            pass.dispatch_workgroups(self.star_vertex_count, 1, 1);
+        }
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -859,7 +939,8 @@ impl State {
             if self.show_guidelines {
                 render_pass.set_pipeline(&self.curve_render_pipeline);
                 render_pass.set_vertex_buffer(0, self.curve_vertex_buffer.slice(..));
-                render_pass.set_index_buffer(self.curve_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                render_pass
+                    .set_index_buffer(self.curve_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
                 render_pass.draw_indexed(0..self.curve_index_count, 0, 0..1);
             }
         }
@@ -920,11 +1001,11 @@ fn process_window_event(state: &mut State, control_flow: &mut ControlFlow, event
             WindowEvent::CloseRequested
             | WindowEvent::KeyboardInput {
                 input:
-                KeyboardInput {
-                    state: ElementState::Pressed,
-                    virtual_keycode: Some(VirtualKeyCode::Escape),
-                    ..
-                },
+                    KeyboardInput {
+                        state: ElementState::Pressed,
+                        virtual_keycode: Some(VirtualKeyCode::Escape),
+                        ..
+                    },
                 ..
             } => *control_flow = ControlFlow::Exit,
             WindowEvent::Resized(physical_size) => {
