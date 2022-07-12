@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use rand::{thread_rng};
+use rand::thread_rng;
 use rand_distr::{Distribution, Exp, Normal, Uniform};
 
 pub struct Star {
@@ -19,29 +19,7 @@ pub struct Galaxy {
     pub r_bulge: f32,
 }
 
-
 impl Galaxy {
-    // fn bulge_star_pdf(&self, r: f32) -> f32 {
-    //     let kappa = 3.0;
-    //     (-kappa * r * 0.25).exp()
-    // }
-
-    // fn disk_star_pdf(&self, r: f32) -> f32 {
-    //     let r_d = 1.0;
-    //     (-r / r_d).exp()
-    // }
-
-    // fn bulge_star_cdf(&self, r: f32) -> f32 {
-    //     let kappa = 3.0;
-    //     1.0 - (-kappa * r * 0.25).exp()
-    // }
-    //
-    // fn disk_star_cdf(&self, r: f32) -> f32 {
-    //     let r_d = 1.0;
-    //     1.0 - (-r / r_d).exp()
-    // }
-
-
     pub fn generate_stars(&self) -> Vec<Star> {
         let mut stars = vec![];
 
@@ -86,4 +64,3 @@ impl Galaxy {
         stars
     }
 }
-
