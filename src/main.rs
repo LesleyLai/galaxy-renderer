@@ -23,9 +23,24 @@ use winit::dpi::PhysicalSize;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct StarGPU {
+struct StarRaw {
     orbit: [f32; 4],
     color: [f32; 4],
+}
+
+impl StarRaw {
+    const ATTRIBS: [wgpu::VertexAttribute; 2] =
+        wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4];
+
+    fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
+        use std::mem;
+
+        wgpu::VertexBufferLayout {
+            array_stride: mem::size_of::<Self>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &Self::ATTRIBS,
+        }
+    }
 }
 
 #[repr(C)]
@@ -333,14 +348,12 @@ struct DrawIndirectParameters {
     first_instance: u32,
 }
 
-impl DrawIndirectParameters {
-    fn new() -> DrawIndirectParameters {
-        DrawIndirectParameters {
-            vertex_count: 0,
-            instance_count: 1,
-            first_vertex: 0,
-            first_instance: 0,
-        }
+fn star_initial_draw_indirect_parameters() -> DrawIndirectParameters {
+    DrawIndirectParameters {
+        vertex_count: 4,
+        instance_count: 0,
+        first_vertex: 0,
+        first_instance: 0,
     }
 }
 
@@ -357,7 +370,7 @@ struct State {
     star_render_pipeline: wgpu::RenderPipeline,
     star_indirect_buffer: wgpu::Buffer,
     _star_input_buffer: wgpu::Buffer,
-    star_vertex_buffer: wgpu::Buffer,
+    star_instance_buffer: wgpu::Buffer,
     star_vertex_count: u32,
 
     curve_render_pipeline: wgpu::RenderPipeline,
@@ -516,7 +529,7 @@ impl State {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[Vertex::desc()],
+                buffers: &[StarRaw::desc()],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -528,7 +541,7 @@ impl State {
                 })],
             }),
             primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::PointList,
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
                 cull_mode: None,
@@ -589,7 +602,7 @@ impl State {
 
         let star_input_buffer_input = stars
             .iter()
-            .map(|star| StarGPU {
+            .map(|star| StarRaw {
                 orbit: [
                     star.x_radius,
                     star.y_radius,
@@ -601,7 +614,7 @@ impl State {
                     [c[0], c[1], c[2], 0.0]
                 },
             })
-            .collect::<Vec<StarGPU>>();
+            .collect::<Vec<StarRaw>>();
 
         let mut curve_vertices = vec![];
         let mut curve_indices = vec![];
@@ -659,10 +672,9 @@ impl State {
             },
         );
 
-        let default_indirect_parameters = DrawIndirectParameters::new();
         let star_indirect_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Star Indirect Buffer"),
-            contents: bytemuck::bytes_of(&default_indirect_parameters),
+            contents: bytemuck::bytes_of(&star_initial_draw_indirect_parameters()),
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::INDIRECT
                 | wgpu::BufferUsages::COPY_DST,
@@ -674,8 +686,8 @@ impl State {
             usage: wgpu::BufferUsages::STORAGE,
         });
 
-        let star_vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Star Vertex Buffer"),
+        let star_instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Star Instance Buffer"),
             size: (star_input_buffer_input.len() * size_of::<Vertex>()) as BufferAddress,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::VERTEX,
             mapped_at_creation: false,
@@ -734,7 +746,7 @@ impl State {
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: star_vertex_buffer.as_entire_binding(),
+                    resource: star_instance_buffer.as_entire_binding(),
                 },
                 wgpu::BindGroupEntry {
                     binding: 3,
@@ -767,7 +779,7 @@ impl State {
             star_render_pipeline,
             star_indirect_buffer,
             _star_input_buffer: star_input_buffer,
-            star_vertex_buffer,
+            star_instance_buffer,
             star_vertex_count: stars.len() as u32,
 
             curve_render_pipeline,
@@ -843,11 +855,10 @@ impl State {
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
 
-        let default_indirect_parameters = DrawIndirectParameters::new();
         self.queue.write_buffer(
             &self.star_indirect_buffer,
             0,
-            bytemuck::bytes_of(&default_indirect_parameters),
+            bytemuck::bytes_of(&star_initial_draw_indirect_parameters()),
         );
 
         let view = output
@@ -890,7 +901,7 @@ impl State {
 
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
             render_pass.set_pipeline(&self.star_render_pipeline);
-            render_pass.set_vertex_buffer(0, self.star_vertex_buffer.slice(..));
+            render_pass.set_vertex_buffer(0, self.star_instance_buffer.slice(..));
             //render_pass.draw(0..self.star_vertex_count, 0..1);
             render_pass.draw_indirect(&self.star_indirect_buffer, 0);
 

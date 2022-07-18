@@ -9,8 +9,8 @@ struct Star {
 };
 
 struct IndirectBuffer {
-    vertex_count: atomic<u32>,
-    instance_count: u32,
+    vertex_count: u32,
+    instance_count: atomic<u32>,
     first_vertex: u32,
     first_instance: u32,
 }
@@ -58,6 +58,7 @@ fn wrap_zero_two_pi(theta: f32) -> f32
     return result;
 }
 
+
 @compute @workgroup_size(64, 1, 1)
 fn main(@builtin(global_invocation_id) param: vec3<u32>) {
     let id = param.x;
@@ -85,7 +86,7 @@ fn main(@builtin(global_invocation_id) param: vec3<u32>) {
 
     let position = vec4<f32>(vx, vy, orbit.z, 0.0);
 
-    atomicAdd(&indirect_buffer.vertex_count, 1u);
+    atomicAdd(&indirect_buffer.instance_count, 1u);
 
     global_1.dstVertices[id].position = position;
     global_1.dstVertices[id].color = star.color;
