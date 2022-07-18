@@ -8,6 +8,13 @@ struct Star {
     @location(1) color: vec4<f32>,
 };
 
+struct IndirectBuffer {
+    vertex_count: atomic<u32>,
+    instance_count: u32,
+    first_vertex: u32,
+    first_instance: u32,
+}
+
 struct SrcVertexBuffer {
     srcVertices: array<StarSpec>,
 }
@@ -17,12 +24,15 @@ struct DstVertexBuffer {
 }
 
 @group(0) @binding(0)
-var<storage> global: SrcVertexBuffer;
+var<storage, read_write> indirect_buffer: IndirectBuffer;
 
 @group(0) @binding(1)
-var<storage, read_write> global_1: DstVertexBuffer;
+var<storage> global: SrcVertexBuffer;
 
 @group(0) @binding(2)
+var<storage, read_write> global_1: DstVertexBuffer;
+
+@group(0) @binding(3)
 var<uniform> time: f32;
 
 let two_pi: f32 = 6.28318531;
@@ -74,6 +84,8 @@ fn main(@builtin(global_invocation_id) param: vec3<u32>) {
     let vy = a * cos_phi * sin_theta + b * sin_phi * cos_theta;
 
     let position = vec4<f32>(vx, vy, orbit.z, 0.0);
+
+    atomicAdd(&indirect_buffer.vertex_count, 1u);
 
     global_1.dstVertices[id].position = position;
     global_1.dstVertices[id].color = star.color;
