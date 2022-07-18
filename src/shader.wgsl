@@ -13,27 +13,38 @@ struct Star {
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) color: vec4<f32>,
+    @location(1) uv: vec2<f32>,
 };
 
-fn quad_vertex_pos_from_index(index: u32) -> vec2<f32>
+struct Vertex {
+  pos: vec2<f32>,
+  uv: vec2<f32>
+}
+
+fn quad_vertex_pos_from_index(index: u32) -> Vertex
 {
+    var vertex: Vertex;
     switch index {
         case 0u {
-            return vec2<f32>(-0.003, 0.003);
+            vertex.pos = vec2<f32>(-0.01, 0.01);
+            vertex.uv = vec2<f32>(0.0, 1.0);
         }
         case 1u {
-            return vec2<f32>(-0.003, -0.003);
+            vertex.pos = vec2<f32>(-0.01, -0.01);
+            vertex.uv = vec2<f32>(0.0, 0.0);
         }
         case 2u {
-            return vec2<f32>(0.003, 0.003);
+            vertex.pos = vec2<f32>(0.01, 0.01);
+            vertex.uv = vec2<f32>(1.0, 1.0);
         }
         case 3u {
-            return vec2<f32>(0.003, -0.003);
+            vertex.pos = vec2<f32>(0.01, -0.01);
+            vertex.uv = vec2<f32>(1.0, 0.0);
         }
         default { // should never happen
-            return vec2<f32>(0.0, 0.0);
         }
     }
+    return vertex;
 }
 
 @vertex
@@ -48,13 +59,26 @@ fn vs_main(
 
     // Offset clip position to the four vertices of the quad
     out.clip_position = out.clip_position / out.clip_position.w;
-    out.clip_position += vec4<f32>(quad_vertex_pos_from_index(in_vertex_index), 0.0, 0.0);
 
-    out.color = star.color;
+    let quad_offset = quad_vertex_pos_from_index(in_vertex_index);
+    out.clip_position += vec4<f32>(quad_offset.pos, 0.0, 0.0);
+
+    out.color = vec4<f32>(star.color.xyz, 1.0);
+    out.uv = quad_offset.uv;
     return out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return in.color;
+    let uv = in.uv;
+
+    let d = abs(uv - 0.5) * 2.0;
+    let d2 = dot(d, d);
+
+    if (d2 > 1.0) {
+      discard;
+    }
+    let color = in.color.xyz;
+    let alpha = 0.05 * (1.0 - sqrt(d2));
+    return vec4<f32>(color, alpha);
 }
