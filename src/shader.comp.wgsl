@@ -60,8 +60,12 @@ fn wrap_zero_two_pi(theta: f32) -> f32
 
 
 @compute @workgroup_size(64, 1, 1)
-fn main(@builtin(global_invocation_id) param: vec3<u32>) {
+fn main(@builtin(global_invocation_id) param: vec3<u32>, @builtin(num_workgroups) workgroups_count: vec3<u32>) {
     let id = param.x;
+
+    if (id >= workgroups_count.x) {
+      return;
+    }
 
     let star = global.srcVertices[id];
     let orbit = star.orbit;
@@ -84,7 +88,7 @@ fn main(@builtin(global_invocation_id) param: vec3<u32>) {
     let vx = a * cos_phi * cos_theta - b * sin_phi * sin_theta;
     let vy = a * cos_phi * sin_theta + b * sin_phi * cos_theta;
 
-    let position = vec4<f32>(vx, vy, orbit.z, 0.0);
+    let position = vec4<f32>(vx, vy, orbit.z, f32(id));
 
     atomicAdd(&indirect_buffer.instance_count, 1u);
 

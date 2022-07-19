@@ -371,7 +371,7 @@ struct State {
     star_indirect_buffer: wgpu::Buffer,
     _star_input_buffer: wgpu::Buffer,
     star_instance_buffer: wgpu::Buffer,
-    star_vertex_count: u32,
+    star_count: u32,
 
     curve_render_pipeline: wgpu::RenderPipeline,
     curve_vertex_buffer: wgpu::Buffer,
@@ -595,7 +595,7 @@ impl State {
             });
 
         let galaxy = Galaxy {
-            star_count: 50000,
+            star_count: 10000,
             r_bulge: 0.2,
         };
         let stars = galaxy.generate_stars();
@@ -780,7 +780,7 @@ impl State {
             star_indirect_buffer,
             _star_input_buffer: star_input_buffer,
             star_instance_buffer,
-            star_vertex_count: stars.len() as u32,
+            star_count: stars.len() as u32,
 
             curve_render_pipeline,
             curve_vertex_buffer,
@@ -877,7 +877,8 @@ impl State {
             });
             pass.set_pipeline(&self.star_compute_pipeline);
             pass.set_bind_group(0, &self.compute_bind_group, &[]);
-            pass.dispatch_workgroups(self.star_vertex_count, 1, 1);
+
+            pass.dispatch_workgroups(self.star_count, 1, 1);
         }
 
         {
