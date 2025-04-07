@@ -37,7 +37,7 @@ impl Galaxy {
                 x_radius = self.r_bulge + disk_x_radius_distribution.sample(&mut thread_rng());
             }
 
-            let start_position = start_position_distribution.sample(&mut thread_rng());
+            let start_position = start_position_distribution.unwrap().sample(&mut thread_rng());
             let curve_offset = x_radius * (2.0 * PI);
 
             let mut y_radius = x_radius;
