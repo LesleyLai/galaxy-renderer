@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use rand::thread_rng;
+use rand::rng;
 use rand_distr::{Distribution, Exp, Normal, Uniform};
 
 pub struct Star {
@@ -32,12 +32,12 @@ impl Galaxy {
         let temperature_distribution = Normal::new(6000.0, 2000.0).unwrap();
 
         for _ in 0..self.star_count {
-            let mut x_radius = bulge_x_radius_distribution.sample(&mut thread_rng());
+            let mut x_radius = bulge_x_radius_distribution.sample(&mut rng());
             if x_radius > self.r_bulge {
-                x_radius = self.r_bulge + disk_x_radius_distribution.sample(&mut thread_rng());
+                x_radius = self.r_bulge + disk_x_radius_distribution.sample(&mut rng());
             }
 
-            let start_position = start_position_distribution.unwrap().sample(&mut thread_rng());
+            let start_position = start_position_distribution.unwrap().sample(&mut rng());
             let curve_offset = x_radius * (2.0 * PI);
 
             let mut y_radius = x_radius;
@@ -47,9 +47,9 @@ impl Galaxy {
 
             let elevation_distribution = Normal::new(0.0, 0.02 * 0.2f32.powf(x_radius)).unwrap();
 
-            let elevation = elevation_distribution.sample(&mut thread_rng()) as f32;
+            let elevation = elevation_distribution.sample(&mut rng());
 
-            let temperature = temperature_distribution.sample(&mut thread_rng());
+            let temperature = temperature_distribution.sample(&mut rng());
 
             stars.push(Star {
                 curve_offset,

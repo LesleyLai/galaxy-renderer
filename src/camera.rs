@@ -1,4 +1,5 @@
 use winit::event::*;
+use winit::keyboard::{KeyCode, PhysicalKey};
 
 pub struct Camera {
     pub eye: cgmath::Point3<f32>,
@@ -46,31 +47,31 @@ impl CameraController {
     }
 
     pub fn process_events(&mut self, event: &WindowEvent) -> bool {
+
         match event {
             WindowEvent::KeyboardInput {
-                input:
-                    KeyboardInput {
-                        state,
-                        virtual_keycode: Some(keycode),
-                        ..
-                    },
+                event:
+                KeyEvent {
+                    state,
+                    physical_key: PhysicalKey::Code(keycode),
+                    ..
+                },
                 ..
             } => {
                 let is_pressed = *state == ElementState::Pressed;
-                match keycode {
-                    VirtualKeyCode::W | VirtualKeyCode::Up => {
-                        self.is_forward_pressed = is_pressed;
-                        true
-                    }
-                    VirtualKeyCode::A | VirtualKeyCode::Left => {
+                match keycode {KeyCode::KeyW | KeyCode::ArrowUp => {
+                    self.is_forward_pressed = is_pressed;
+                    true
+                }
+                    KeyCode::KeyA | KeyCode::ArrowLeft => {
                         self.is_left_pressed = is_pressed;
                         true
                     }
-                    VirtualKeyCode::S | VirtualKeyCode::Down => {
+                    KeyCode::KeyS | KeyCode::ArrowDown => {
                         self.is_backward_pressed = is_pressed;
                         true
                     }
-                    VirtualKeyCode::D | VirtualKeyCode::Right => {
+                    KeyCode::KeyD | KeyCode::ArrowRight => {
                         self.is_right_pressed = is_pressed;
                         true
                     }
