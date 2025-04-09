@@ -24,7 +24,7 @@ struct Vertex {
 fn quad_vertex_pos_from_index(index: u32) -> Vertex
 {
     var vertex: Vertex;
-    switch index {
+    switch (index) {
         case 0u {
             vertex.pos = vec2<f32>(-0.01, 0.01);
             vertex.uv = vec2<f32>(0.0, 1.0);
@@ -61,7 +61,7 @@ fn vs_main(
     out.clip_position = out.clip_position / out.clip_position.w;
 
     let quad_offset = quad_vertex_pos_from_index(in_vertex_index);
-    out.clip_position += vec4<f32>(quad_offset.pos, 0.0, 0.0);
+    out.clip_position += vec4<f32>(quad_offset.pos * 0.3, 0.0, 0.0);
 
     out.color = vec4<f32>(star.color.xyz, 1.0);
     out.uv = quad_offset.uv;
@@ -79,6 +79,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
       discard;
     }
     let color = in.color.xyz;
-    let alpha = 0.05 * (1.0 - sqrt(d2));
+    let alpha = (1.0 - sqrt(d2));
     return vec4<f32>(color, alpha);
 }
